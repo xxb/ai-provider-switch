@@ -54,15 +54,14 @@ def update_claude(provider_data, group_name):
         config.setdefault("env", {})
         
         if url:
-            # Smart URL update for Claude:
             url = url.rstrip("/")
-            if not any(url.endswith(s) for s in ["/messages", "/v1/messages"]):
-                # If the user has a special provider like anyrouter.top, we ONLY append /messages
-                # We do NOT add /v1 unless the user specifically put it in the TOML
+            # Smart append without forcing /v1
+            if "/messages" not in url:
                 url = f"{url}/messages"
             config["env"]["ANTHROPIC_BASE_URL"] = url
             
         if key: config["env"]["ANTHROPIC_AUTH_TOKEN"] = key
+        
         if model: config["model"] = model
         else: config.pop("model", None)
             
@@ -80,7 +79,8 @@ def update_codex(provider_data, group_name):
             content = CODEX_CONFIG.read_text()
             if url:
                 url = url.rstrip("/")
-                if not any(url.endswith(s) for s in ["/chat/completions", "/v1/chat/completions"]):
+                # Smart append without forcing /v1
+                if "/chat/completions" not in url:
                     url = f"{url}/chat/completions"
 
                 m_prov = re.search(r'model_provider\s*=\s*"(.*?)"', content)
@@ -89,13 +89,11 @@ def update_codex(provider_data, group_name):
                     sections = re.split(r'(\n\[)', content)
                     new_sections = []
                     target = f"model_providers.{prov_name}]"
-                    found = False
                     for i, s in enumerate(sections):
                         if i > 0 and sections[i-1] == "\n[" and s.startswith(target):
                             s = re.sub(r'(base_url\s*=\s*").*?(")', rf'\1{url}\2', s)
-                            found = True
                         new_sections.append(s)
-                    if found: content = "".join(new_sections)
+                    content = "".join(new_sections)
             
             if model:
                 if re.search(r'\nmodel\s*=', content):
