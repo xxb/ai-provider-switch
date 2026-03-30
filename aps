@@ -53,14 +53,18 @@ def update_claude(provider_data, group_name):
         config = json.loads(CLAUDE_SETTINGS.read_text())
         config.setdefault("env", {})
         
-        if url: config["env"]["ANTHROPIC_BASE_URL"] = url
+        if url:
+            # Smart URL update for Claude:
+            url = url.rstrip("/")
+            if not any(url.endswith(s) for s in ["/messages", "/v1/messages"]):
+                # If the user has a special provider like anyrouter.top, we ONLY append /messages
+                # We do NOT add /v1 unless the user specifically put it in the TOML
+                url = f"{url}/messages"
+            config["env"]["ANTHROPIC_BASE_URL"] = url
+            
         if key: config["env"]["ANTHROPIC_AUTH_TOKEN"] = key
-        
-        # Model Logic: If not empty, set. If empty/none, remove.
-        if model:
-            config["model"] = model
-        else:
-            config.pop("model", None)
+        if model: config["model"] = model
+        else: config.pop("model", None)
             
         CLAUDE_SETTINGS.write_text(json.dumps(config, indent=2))
         print(f"Updated Claude (group: {group_name or 'default'})")
@@ -75,6 +79,10 @@ def update_codex(provider_data, group_name):
         try:
             content = CODEX_CONFIG.read_text()
             if url:
+                url = url.rstrip("/")
+                if not any(url.endswith(s) for s in ["/chat/completions", "/v1/chat/completions"]):
+                    url = f"{url}/chat/completions"
+
                 m_prov = re.search(r'model_provider\s*=\s*"(.*?)"', content)
                 if m_prov:
                     prov_name = m_prov.group(1)
@@ -89,16 +97,13 @@ def update_codex(provider_data, group_name):
                         new_sections.append(s)
                     if found: content = "".join(new_sections)
             
-            # Model Logic: If not empty, set. If empty/none, remove.
             if model:
                 if re.search(r'\nmodel\s*=', content):
                     content = re.sub(r'(\nmodel\s*=\s*").*?(")', rf'\1{model}\2', content, count=1)
                 else:
                     content = re.sub(r'(\w+\s*=\s*".*?")', rf'\1\nmodel = "{model}"', content, count=1)
             else:
-                # Remove model line if it exists
                 content = re.sub(r'\nmodel\s*=\s*".*?"', '', content)
-                
             CODEX_CONFIG.write_text(content)
             print(f"Updated Codex Config (group: {group_name or 'default'})")
         except Exception as e: print(f"Error Codex Config: {e}")
@@ -124,47 +129,6 @@ def cmd_use_dispatch(args, target_service=None):
     if target_service in [None, "claude"]: update_claude(data, group_name)
     if target_service in [None, "codex"]: update_codex(data, group_name)
 
-def cmd_import(args):
-    ensure_config_dir()
-    providers = {}
-    for p in Path.home().glob(".claude/settings.*.json"):
-        name = p.name.replace("settings.", "").replace(".json", "")
-        if name == "json": continue
-        try:
-            data = json.loads(p.read_text())
-            env = data.get("env", {})
-            u, k = env.get("ANTHROPIC_BASE_URL"), env.get("ANTHROPIC_AUTH_TOKEN")
-            if u or k: providers.setdefault(name, {}).setdefault("claude", {})["url"] = u or ""
-            if k: providers[name]["claude"]["key"] = k
-        except: pass
-    for p in Path.home().glob(".codex/config.*.toml"):
-        name = p.name.replace("config.", "").replace(".toml", "")
-        if name == "toml": continue
-        try:
-            content = p.read_text()
-            m_prov = re.search(r'model_provider\s*=\s*"(.*?)"', content)
-            if m_prov:
-                prov_name = m_prov.group(1)
-                m_url = re.search(rf'\[model_providers\.{prov_name}\].*?base_url\s*=\s*"(.*?)"', content, re.DOTALL)
-                if m_url:
-                    u = m_url.group(1)
-                    auth_p = p.parent / f"auth.{name}.json"
-                    if not auth_p.exists(): auth_p = p.parent / "auth.json"
-                    k = ""
-                    if auth_p.exists(): k = json.loads(auth_p.read_text()).get("OPENAI_API_KEY", "")
-                    providers.setdefault(name, {}).setdefault("codex", {})["url"] = u or ""
-                    if k: providers[name]["codex"]["key"] = k
-        except: pass
-    for name, data in providers.items():
-        if data:
-            dest = CONFIG_DIR / f"{name}.toml"
-            lines = ["# AI Provider Configuration"]
-            for section, s_data in data.items():
-                lines.append(f"\n[{section}]")
-                for k, v in s_data.items(): lines.append(f'{k} = "{v}"')
-            dest.write_text("\n".join(lines) + "\n")
-            print(f"Imported '{name}'")
-
 def cmd_list(args):
     ensure_config_dir()
     print(f"{'Name':<20} {'Groups/Sections'}")
@@ -178,7 +142,6 @@ def main():
     parser = argparse.ArgumentParser(description="AI Provider Switcher (APS)")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("list", help="List providers")
-    subparsers.add_parser("import", help="Import existing configs")
     p_use = subparsers.add_parser("use", help="Switch all")
     p_use.add_argument("target", help="provider[:group]")
     p_claude = subparsers.add_parser("claude", help="Claude only")
@@ -191,7 +154,6 @@ def main():
     x_use.add_argument("target", help="provider[:group]")
     args = parser.parse_args()
     if args.command == "list": cmd_list(args)
-    elif args.command == "import": cmd_import(args)
     elif args.command == "use": cmd_use_dispatch(args)
     elif args.command == "claude" and args.subcommand == "use": cmd_use_dispatch(args, "claude")
     elif args.command == "codex" and args.subcommand == "use": cmd_use_dispatch(args, "codex")
