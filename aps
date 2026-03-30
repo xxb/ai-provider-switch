@@ -54,12 +54,7 @@ def update_claude(provider_data, group_name):
         config.setdefault("env", {})
         
         if url:
-            url = url.rstrip("/")
-            # Smart append without forcing /v1
-            if "/messages" not in url:
-                url = f"{url}/messages"
             config["env"]["ANTHROPIC_BASE_URL"] = url
-            
         if key: config["env"]["ANTHROPIC_AUTH_TOKEN"] = key
         
         if model: config["model"] = model
@@ -78,11 +73,6 @@ def update_codex(provider_data, group_name):
         try:
             content = CODEX_CONFIG.read_text()
             if url:
-                url = url.rstrip("/")
-                # Smart append without forcing /v1
-                if "/chat/completions" not in url:
-                    url = f"{url}/chat/completions"
-
                 m_prov = re.search(r'model_provider\s*=\s*"(.*?)"', content)
                 if m_prov:
                     prov_name = m_prov.group(1)

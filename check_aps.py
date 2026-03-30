@@ -37,16 +37,13 @@ def get_val(data, service, keys):
 def test_claude(url, key, model):
     if not url or not key: return "N/A"
     test_url = url.rstrip("/")
-    if not any(test_url.endswith(s) for s in ["/v1/messages", "/messages"]):
-        test_url += "/v1/messages"
+    # Smart path: Only add /messages if no standard path is present
+    if not any(test_url.endswith(s) for s in ["/messages", "/v1/messages"]):
+        test_url = f"{test_url}/messages"
     
-    payload = {
-        "max_tokens": 1,
-        "messages": [{"role": "user", "content": "Hi"}]
-    }
-    # ONLY add model if it exists in config
+    payload = {"max_tokens": 1, "messages": [{"role": "user", "content": "Hi"}]}
     if model: payload["model"] = model
-    else: payload["model"] = "claude-3-haiku-20240307" # Fallback for test ONLY if none in config
+    else: payload["model"] = "claude-3-haiku-20240307"
 
     cmd = [
         "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
@@ -64,15 +61,13 @@ def test_claude(url, key, model):
 def test_codex(url, key, model):
     if not url or not key: return "N/A"
     test_url = url.rstrip("/")
-    if not any(test_url.endswith(s) for s in ["/v1/chat/completions", "/chat/completions"]):
-        test_url += "/v1/chat/completions"
+    # Smart path: Only add /chat/completions if no standard path is present
+    if not any(test_url.endswith(s) for s in ["/chat/completions", "/v1/chat/completions"]):
+        test_url = f"{test_url}/chat/completions"
 
-    payload = {
-        "messages": [{"role": "user", "content": "Hi"}]
-    }
-    # ONLY add model if it exists in config
+    payload = {"messages": [{"role": "user", "content": "Hi"}]}
     if model: payload["model"] = model
-    else: payload["model"] = "gpt-3.5-turbo" # Fallback for test ONLY
+    else: payload["model"] = "gpt-3.5-turbo"
 
     cmd = [
         "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
@@ -101,3 +96,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
