@@ -32,16 +32,6 @@ def parse_provider_toml(path):
             if kv_match: data[current_section][kv_match.group(1)] = kv_match.group(2)
     return data
 
-def write_provider_toml(path, sections_data):
-    lines = ["# AI Provider Configuration"]
-    for section, data in sections_data.items():
-        if not data: continue
-        header = "" if section == "_common" else f"[{section}]"
-        if header: lines.append(f"\n{header}")
-        for k, v in data.items():
-            lines.append(f'{k} = "{v}"')
-    path.write_text("\n".join(lines) + "\n")
-
 def get_config_value(data, service, group, keys):
     search_orders = []
     if group: search_orders.append(f"{service}.{group}")
@@ -57,16 +47,21 @@ def update_claude(provider_data, group_name):
     url = get_config_value(provider_data, "claude", group_name, ["url", "base_url"])
     key = get_config_value(provider_data, "claude", group_name, ["key", "api_key"])
     model = get_config_value(provider_data, "claude", group_name, ["model"])
-    if not (url or key or model):
-        print("Skipping Claude: No configuration found.")
-        return
+    
     if not CLAUDE_SETTINGS.exists(): return
     try:
         config = json.loads(CLAUDE_SETTINGS.read_text())
         config.setdefault("env", {})
+        
         if url: config["env"]["ANTHROPIC_BASE_URL"] = url
         if key: config["env"]["ANTHROPIC_AUTH_TOKEN"] = key
-        if model: config["model"] = model
+        
+        # Model Logic: If not empty, set. If empty/none, remove.
+        if model:
+            config["model"] = model
+        else:
+            config.pop("model", None)
+            
         CLAUDE_SETTINGS.write_text(json.dumps(config, indent=2))
         print(f"Updated Claude (group: {group_name or 'default'})")
     except Exception as e: print(f"Error Claude: {e}")
@@ -75,9 +70,7 @@ def update_codex(provider_data, group_name):
     url = get_config_value(provider_data, "codex", group_name, ["url", "base_url"])
     key = get_config_value(provider_data, "codex", group_name, ["key", "api_key"])
     model = get_config_value(provider_data, "codex", group_name, ["model"])
-    if not (url or key or model):
-        print("Skipping Codex: No configuration found.")
-        return
+    
     if CODEX_CONFIG.exists():
         try:
             content = CODEX_CONFIG.read_text()
@@ -95,10 +88,21 @@ def update_codex(provider_data, group_name):
                             found = True
                         new_sections.append(s)
                     if found: content = "".join(new_sections)
-            if model: content = re.sub(r'(\nmodel\s*=\s*").*?(")', rf'\1{model}\2', content, count=1)
+            
+            # Model Logic: If not empty, set. If empty/none, remove.
+            if model:
+                if re.search(r'\nmodel\s*=', content):
+                    content = re.sub(r'(\nmodel\s*=\s*").*?(")', rf'\1{model}\2', content, count=1)
+                else:
+                    content = re.sub(r'(\w+\s*=\s*".*?")', rf'\1\nmodel = "{model}"', content, count=1)
+            else:
+                # Remove model line if it exists
+                content = re.sub(r'\nmodel\s*=\s*".*?"', '', content)
+                
             CODEX_CONFIG.write_text(content)
             print(f"Updated Codex Config (group: {group_name or 'default'})")
         except Exception as e: print(f"Error Codex Config: {e}")
+
     if CODEX_AUTH.exists() and key:
         try:
             auth = json.loads(CODEX_AUTH.read_text())
@@ -123,7 +127,6 @@ def cmd_use_dispatch(args, target_service=None):
 def cmd_import(args):
     ensure_config_dir()
     providers = {}
-    # Claude discovery
     for p in Path.home().glob(".claude/settings.*.json"):
         name = p.name.replace("settings.", "").replace(".json", "")
         if name == "json": continue
@@ -134,7 +137,6 @@ def cmd_import(args):
             if u or k: providers.setdefault(name, {}).setdefault("claude", {})["url"] = u or ""
             if k: providers[name]["claude"]["key"] = k
         except: pass
-    # Codex discovery
     for p in Path.home().glob(".codex/config.*.toml"):
         name = p.name.replace("config.", "").replace(".toml", "")
         if name == "toml": continue
@@ -154,8 +156,14 @@ def cmd_import(args):
                     if k: providers[name]["codex"]["key"] = k
         except: pass
     for name, data in providers.items():
-        write_provider_toml(CONFIG_DIR / f"{name}.toml", data)
-        print(f"Imported '{name}'")
+        if data:
+            dest = CONFIG_DIR / f"{name}.toml"
+            lines = ["# AI Provider Configuration"]
+            for section, s_data in data.items():
+                lines.append(f"\n[{section}]")
+                for k, v in s_data.items(): lines.append(f'{k} = "{v}"')
+            dest.write_text("\n".join(lines) + "\n")
+            print(f"Imported '{name}'")
 
 def cmd_list(args):
     ensure_config_dir()
