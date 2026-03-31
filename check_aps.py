@@ -96,16 +96,23 @@ trust_level = "trusted"
             cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
         try:
-            stdout, stderr = process.communicate(timeout=30)
+            stdout, stderr = process.communicate(timeout=60)
+            combined = stdout + stderr
             if "OK" in stdout.upper() or process.returncode == 0:
                 return "PASS (Real)"
             else:
-                # Get last part of stderr which usually has the real error
-                err_msg = stderr.strip().split("\n")[-1][:30]
-                return f"FAIL ({err_msg})"
+                # Extract error code and message if present
+                import re
+                match = re.search(r"unexpected status (\d{3}.*?)(?:, url:|$)", combined, re.DOTALL)
+                if match:
+                    return f"FAIL ({match.group(1).strip()})"
+                
+                # Fallback to last line of stderr
+                err_msg = stderr.strip().split("\n")[-1][:40]
+                return f"FAIL ({err_msg or 'Unknown Error'})"
         except subprocess.TimeoutExpired:
             process.kill()
-            return "TIMEOUT"
+            return "TIMEOUT (60s)"
     except Exception as e:
         return f"ERROR ({type(e).__name__})"
     finally:
