@@ -61,13 +61,13 @@ def test_claude(url, key, model):
 def test_codex(url, key, model):
     if not url or not key: return "N/A"
     test_url = url.rstrip("/")
-    # Smart path: Only add /chat/completions if no standard path is present
-    if not any(test_url.endswith(s) for s in ["/chat/completions", "/v1/chat/completions"]):
-        test_url = f"{test_url}/chat/completions"
+    # Smart path: Only add /responses if no standard path is present
+    if not any(test_url.endswith(s) for s in ["/responses", "/v1/responses"]):
+        test_url = f"{test_url}/responses"
 
     payload = {"messages": [{"role": "user", "content": "Hi"}]}
     if model: payload["model"] = model
-    else: payload["model"] = "gpt-3.5-turbo"
+    else: payload["model"] = "gpt-5.2"
 
     cmd = [
         "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
