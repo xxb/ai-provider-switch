@@ -60,31 +60,72 @@ def test_claude(url, key, model):
 
 def test_codex(url, key, model):
     if not url or not key: return "N/A"
-    test_url = url.rstrip("/")
-    # Smart path: Only add /responses if no standard path is present
-    if not any(test_url.endswith(s) for s in ["/responses", "/v1/responses"]):
-        test_url = f"{test_url}/responses"
-
-    payload = {"messages": [{"role": "user", "content": "Hi"}]}
-    if model: payload["model"] = model
-    else: payload["model"] = "gpt-5.2"
-
-    cmd = [
-        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-        "-X", "POST", test_url,
-        "-H", f"Authorization: Bearer {key}",
-        "-H", "content-type: application/json",
-        "-d", json.dumps(payload)
-    ]
+    import tempfile
+    import shutil
+    
+    test_dir = Path(tempfile.mkdtemp(prefix="aps_test_"))
     try:
-        res = subprocess.check_output(cmd, timeout=10).decode().strip()
-        return f"PASS ({res})" if res == "200" else f"FAIL ({res})"
-    except: return "ERROR"
+        codex_dir = test_dir / ".codex"
+        codex_dir.mkdir(parents=True)
+        
+        # Create a minimal config for codex
+        current_dir = os.getcwd()
+        config_content = f"""
+model_provider = "test"
+model = "{model or 'gpt-5.4'}"
+approval_policy = "on-request"
+
+[model_providers.test]
+name = "test"
+base_url = "{url}"
+wire_api = "responses"
+requires_openai_auth = true
+
+[projects."{current_dir}"]
+trust_level = "trusted"
+"""
+        (codex_dir / "config.toml").write_text(config_content)
+        (codex_dir / "auth.json").write_text(json.dumps({"OPENAI_API_KEY": key}))
+        
+        # Run real codex in isolation
+        env = os.environ.copy()
+        env["HOME"] = str(test_dir)
+        
+        cmd = ["codex", "exec", "--skip-git-repo-check", "Hi, reply with OK"]
+        process = subprocess.Popen(
+            cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        try:
+            stdout, stderr = process.communicate(timeout=30)
+            if "OK" in stdout.upper() or process.returncode == 0:
+                return "PASS (Real)"
+            else:
+                # Get last part of stderr which usually has the real error
+                err_msg = stderr.strip().split("\n")[-1][:30]
+                return f"FAIL ({err_msg})"
+        except subprocess.TimeoutExpired:
+            process.kill()
+            return "TIMEOUT"
+    except Exception as e:
+        return f"ERROR ({type(e).__name__})"
+    finally:
+        shutil.rmtree(test_dir, ignore_errors=True)
 
 def main():
+    import sys
+    target_provider = sys.argv[1] if len(sys.argv) > 1 else None
+    
     print(f"{'Provider':<15} {'Claude (Anthropic)':<20} {'Codex (OpenAI)'}")
     print("-" * 65)
-    for p in sorted(CONFIG_DIR.glob("*.toml")):
+    
+    providers = sorted(CONFIG_DIR.glob("*.toml"))
+    if target_provider:
+        providers = [p for p in providers if p.stem == target_provider]
+        if not providers:
+            print(f"Error: Provider '{target_provider}' not found.")
+            return
+
+    for p in providers:
         data = parse_toml(p)
         c_url = get_val(data, "claude", ["url", "base_url"])
         c_key = get_val(data, "claude", ["key", "api_key"])
