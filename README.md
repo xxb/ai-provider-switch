@@ -12,7 +12,6 @@ It manages the complexity of different API protocols, varying keys for the same 
   - Define global settings (URLs/Keys).
   - Override settings for specific services (`claude` or `codex`).
   - Create specific **Groups** for different models within the same provider (e.g., `nvidia:glm5` vs `nvidia:llama3`).
-- 🔍 **Auto-Discovery**: Automatically import your existing configurations from `~/.claude` and `~/.codex`.
 - 🛠️ **Alias Support**: Supports both `api_key`/`key` and `base_url`/`url` for maximum compatibility with your existing snippets.
 
 ## Installation
@@ -55,7 +54,6 @@ model = "gpt-4o-mini"
 
 | Command | Description |
 | :--- | :--- |
-| `aps import` | Scan existing config files and generate TOMLs. |
 | `aps list` | List all configured providers and their groups. |
 | `aps use <name>` | Switch both Claude and Codex to the provider. |
 | `aps use <name>:<group>` | Switch to a specific group (e.g., `aps use my-provider:fast`). |
