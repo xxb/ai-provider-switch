@@ -23,12 +23,13 @@ def parse_toml(path):
             if kv_match: data[current_section][kv_match.group(1)] = kv_match.group(2)
     return data
 
-def get_val(data, service, keys):
-    for section, values in data.items():
-        if section.startswith(f"{service}."):
-            for k in keys:
-                if k in values: return values[k]
-    for section in [service, "_common"]:
+def get_val(data, service, keys, group=None):
+    search_orders = []
+    if group: search_orders.append(f"{service}.{group}")
+    search_orders.append(service)
+    search_orders.append("_common")
+    
+    for section in search_orders:
         if section in data:
             for k in keys:
                 if k in data[section]: return data[section][k]
@@ -122,8 +123,8 @@ def main():
     import sys
     target_provider = sys.argv[1] if len(sys.argv) > 1 else None
     
-    print(f"{'Provider':<15} {'Claude (Anthropic)':<20} {'Codex (OpenAI)'}")
-    print("-" * 65)
+    print(f"{'Provider':<20} {'Claude (Anthropic)':<20} {'Codex (OpenAI)'}")
+    print("-" * 75)
     
     providers = sorted(CONFIG_DIR.glob("*.toml"))
     if target_provider:
@@ -134,13 +135,30 @@ def main():
 
     for p in providers:
         data = parse_toml(p)
-        c_url = get_val(data, "claude", ["url", "base_url"])
-        c_key = get_val(data, "claude", ["key", "api_key"])
-        c_mod = get_val(data, "claude", ["model"])
-        x_url = get_val(data, "codex", ["url", "base_url"])
-        x_key = get_val(data, "codex", ["key", "api_key"])
-        x_mod = get_val(data, "codex", ["model"])
-        print(f"{p.stem:<15} {test_claude(c_url, c_key, c_mod):<20} {test_codex(x_url, x_key, x_mod)}")
+        
+        # Collect all unique groups for this provider
+        groups = set()
+        for section in data:
+            if section == "_common": continue
+            if "." in section:
+                groups.add(section.split(".")[1])
+            else:
+                groups.add(None) # Default group
+        
+        for group in sorted(list(groups), key=lambda x: (x is not None, x)):
+            display_name = f"{p.stem}:{group}" if group else p.stem
+            
+            c_url = get_val(data, "claude", ["url", "base_url"], group)
+            c_key = get_val(data, "claude", ["key", "api_key"], group)
+            c_mod = get_val(data, "claude", ["model"], group)
+            
+            x_url = get_val(data, "codex", ["url", "base_url"], group)
+            x_key = get_val(data, "codex", ["key", "api_key"], group)
+            x_mod = get_val(data, "codex", ["model"], group)
+            
+            # Only print if at least one service is configured for this group
+            if any([c_url, c_key, x_url, x_key]):
+                print(f"{display_name:<20} {test_claude(c_url, c_key, c_mod):<20} {test_codex(x_url, x_key, x_mod)}")
 
 if __name__ == "__main__":
     main()
