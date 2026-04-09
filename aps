@@ -15,6 +15,60 @@ CODEX_AUTH = Path.home() / ".codex" / "auth.json"
 def ensure_config_dir():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
+def strip_trailing_commas(text):
+    result = []
+    in_string = False
+    escaped = False
+    i = 0
+
+    while i < len(text):
+        ch = text[i]
+
+        if in_string:
+            result.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if ch == '"':
+            in_string = True
+            result.append(ch)
+            i += 1
+            continue
+
+        if ch == ",":
+            j = i + 1
+            while j < len(text) and text[j] in " \t\r\n":
+                j += 1
+            if j < len(text) and text[j] in "}]":
+                i += 1
+                continue
+
+        result.append(ch)
+        i += 1
+
+    return "".join(result)
+
+def load_json_config(path):
+    text = path.read_text()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        cleaned = strip_trailing_commas(text)
+        if cleaned != text:
+            try:
+                return json.loads(cleaned)
+            except json.JSONDecodeError:
+                pass
+        raise ValueError(
+            f"{path}: invalid JSON at line {exc.lineno} column {exc.colno}: {exc.msg}"
+        ) from exc
+
 def parse_provider_toml(path):
     if not path.exists(): return {}
     content = path.read_text()
@@ -50,7 +104,7 @@ def update_claude(provider_data, group_name):
     
     if not CLAUDE_SETTINGS.exists(): return
     try:
-        config = json.loads(CLAUDE_SETTINGS.read_text())
+        config = load_json_config(CLAUDE_SETTINGS)
         config.setdefault("env", {})
         
         if url:
@@ -98,7 +152,7 @@ def update_codex(provider_data, group_name):
 
     if CODEX_AUTH.exists() and key:
         try:
-            auth = json.loads(CODEX_AUTH.read_text())
+            auth = load_json_config(CODEX_AUTH)
             auth["OPENAI_API_KEY"] = key
             CODEX_AUTH.write_text(json.dumps(auth, indent=2))
             print(f"Updated Codex Auth")
