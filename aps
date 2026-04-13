@@ -118,6 +118,28 @@ def update_claude(provider_data, group_name):
         print(f"Updated Claude (group: {group_name or 'default'})")
     except Exception as e: print(f"Error Claude: {e}")
 
+def update_codex_native():
+    auth_me = Path.home() / ".codex" / "auth.me.json"
+    if not auth_me.exists():
+        print(f"Error: {auth_me} does not exist. Cannot switch to native mode.", file=sys.stderr)
+        sys.exit(1)
+        
+    if CODEX_CONFIG.exists():
+        try:
+            content = CODEX_CONFIG.read_text()
+            content = re.sub(r'^(?!\s*#)(\s*model_provider\s*=)', r'# \1', content, flags=re.MULTILINE)
+            CODEX_CONFIG.write_text(content)
+            print("Updated Codex Config (native mode)")
+        except Exception as e:
+            print(f"Error Codex Config: {e}")
+
+    try:
+        import shutil
+        shutil.copy2(auth_me, CODEX_AUTH)
+        print("Updated Codex Auth (restored from auth.me.json)")
+    except Exception as e:
+        print(f"Error restoring Codex Auth: {e}")
+
 def update_codex(provider_data, group_name):
     url = get_config_value(provider_data, "codex", group_name, ["url", "base_url"])
     key = get_config_value(provider_data, "codex", group_name, ["key", "api_key"])
@@ -127,17 +149,29 @@ def update_codex(provider_data, group_name):
         try:
             content = CODEX_CONFIG.read_text()
             if url:
-                m_prov = re.search(r'model_provider\s*=\s*"(.*?)"', content)
+                m_prov = re.search(r'^#?\s*model_provider\s*=\s*"(.*?)"', content, flags=re.MULTILINE)
                 if m_prov:
                     prov_name = m_prov.group(1)
+                    content = re.sub(r'^#?\s*model_provider\s*=\s*".*?"', f'model_provider = "{prov_name}"', content, count=1, flags=re.MULTILINE)
+                else:
+                    m_sec = re.search(r'\[model_providers\.(.*?)\]', content)
+                    prov_name = m_sec.group(1) if m_sec else "custom"
+                    content = f'model_provider = "{prov_name}"\n' + content
+                
+                target = f"model_providers.{prov_name}]"
+                if target in content:
                     sections = re.split(r'(\n\[)', content)
                     new_sections = []
-                    target = f"model_providers.{prov_name}]"
                     for i, s in enumerate(sections):
                         if i > 0 and sections[i-1] == "\n[" and s.startswith(target):
-                            s = re.sub(r'(base_url\s*=\s*").*?(")', rf'\1{url}\2', s)
+                            if re.search(r'base_url\s*=', s):
+                                s = re.sub(r'(base_url\s*=\s*").*?(")', rf'\1{url}\2', s)
+                            else:
+                                s += f'\nbase_url = "{url}"\n'
                         new_sections.append(s)
                     content = "".join(new_sections)
+                else:
+                    content += f'\n[model_providers.{prov_name}]\nbase_url = "{url}"\n'
             
             if model:
                 if re.search(r'\nmodel\s*=', content):
@@ -163,6 +197,14 @@ def cmd_use_dispatch(args, target_service=None):
     parts = args.target.split(":")
     provider_name = parts[0]
     group_name = parts[1] if len(parts) > 1 else None
+
+    if provider_name == "native":
+        if target_service in [None, "claude"]:
+            print("Native mode for Claude is not yet implemented.")
+        if target_service in [None, "codex"]:
+            update_codex_native()
+        return
+
     p = CONFIG_DIR / f"{provider_name}.toml"
     if not p.exists():
         print(f"Error: Provider '{provider_name}' not found.")
