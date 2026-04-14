@@ -184,11 +184,11 @@ def update_codex(provider_data, group_name):
             print(f"Updated Codex Config (group: {group_name or 'default'})")
         except Exception as e: print(f"Error Codex Config: {e}")
 
-    if CODEX_AUTH.exists() and key:
+    if key:
         try:
-            auth = load_json_config(CODEX_AUTH)
-            auth["OPENAI_API_KEY"] = key
-            CODEX_AUTH.write_text(json.dumps(auth, indent=2))
+            CODEX_AUTH.parent.mkdir(parents=True, exist_ok=True)
+            auth = {"OPENAI_API_KEY": key}
+            CODEX_AUTH.write_text(json.dumps(auth, indent=2) + "\n")
             print(f"Updated Codex Auth")
         except Exception as e: print(f"Error Codex Auth: {e}")
 
