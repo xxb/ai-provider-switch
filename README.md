@@ -50,6 +50,30 @@ model = "gpt-4o"
 model = "gpt-4o-mini"
 ```
 
+Claude Code settings that are stored under `settings.json` `env` can be added
+to the same Claude section with APS field names:
+
+```toml
+[claude]
+key = "sk-ant-xxxxxx"
+model = "claude-3-5-sonnet"
+default_opus_model = "deepseek-v4-pro[1m]"
+default_sonnet_model = "deepseek-v4-pro[1m]"
+default_haiku_model = "deepseek-v4-flash"
+subagent_model = "deepseek-v4-flash"
+effort_level = "max"
+```
+
+APS writes these fields to Claude Code's `settings.json` `env` object as
+`ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`,
+`ANTHROPIC_DEFAULT_HAIKU_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`. The regular
+`model` field is written to `settings.json` as Claude Code's top-level `model`;
+`effort_level` is written as the top-level `effortLevel` setting.
+
+When switching Claude providers, APS removes its managed Claude settings before
+writing the selected provider, so model defaults from a previous provider do not
+leak into the next one.
+
 ## Usage
 
 | Command | Description |

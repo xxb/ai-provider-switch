@@ -11,6 +11,12 @@ CONFIG_DIR = Path.home() / ".ai-provider-switch"
 CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
 CODEX_CONFIG = Path.home() / ".codex" / "config.toml"
 CODEX_AUTH = Path.home() / ".codex" / "auth.json"
+CLAUDE_SETTINGS_ENV_FIELDS = {
+    "default_opus_model": "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "default_sonnet_model": "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "default_haiku_model": "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "subagent_model": "CLAUDE_CODE_SUBAGENT_MODEL",
+}
 
 def ensure_config_dir():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -97,22 +103,43 @@ def get_config_value(data, service, group, keys):
                 if k in data[section]: return data[section][k]
     return None
 
+def get_claude_settings_env(provider_data, group_name):
+    env = {}
+    for field_name, env_name in CLAUDE_SETTINGS_ENV_FIELDS.items():
+        value = get_config_value(provider_data, "claude", group_name, [field_name])
+        if value:
+            env[env_name] = value
+    return env
+
 def update_claude(provider_data, group_name):
     url = get_config_value(provider_data, "claude", group_name, ["url", "base_url"])
     key = get_config_value(provider_data, "claude", group_name, ["key", "api_key"])
     model = get_config_value(provider_data, "claude", group_name, ["model"])
+    effort_level = get_config_value(provider_data, "claude", group_name, ["effort_level"])
+    settings_env = get_claude_settings_env(provider_data, group_name)
     
     if not CLAUDE_SETTINGS.exists(): return
     try:
         config = load_json_config(CLAUDE_SETTINGS)
         config.setdefault("env", {})
+
+        managed_env_keys = [
+            "ANTHROPIC_BASE_URL",
+            "ANTHROPIC_AUTH_TOKEN",
+            *CLAUDE_SETTINGS_ENV_FIELDS.values(),
+        ]
+        for env_key in managed_env_keys:
+            config["env"].pop(env_key, None)
         
         if url:
             config["env"]["ANTHROPIC_BASE_URL"] = url
         if key: config["env"]["ANTHROPIC_AUTH_TOKEN"] = key
+        config["env"].update(settings_env)
         
         if model: config["model"] = model
         else: config.pop("model", None)
+        if effort_level: config["effortLevel"] = effort_level
+        else: config.pop("effortLevel", None)
             
         CLAUDE_SETTINGS.write_text(json.dumps(config, indent=2))
         print(f"Updated Claude (group: {group_name or 'default'})")
