@@ -145,28 +145,38 @@ def update_claude(provider_data, group_name):
         print(f"Updated Claude (group: {group_name or 'default'})")
     except Exception as e: print(f"Error Claude: {e}")
 
-def update_codex_native():
-    auth_me = Path.home() / ".codex" / "auth.me.json"
-    if not auth_me.exists():
-        print(f"Error: {auth_me} does not exist. Cannot switch to native mode.", file=sys.stderr)
+def update_codex_native(user=None):
+    user = user or "user1"
+    auth_file = CONFIG_DIR / f"auth.{user}.json"
+    if not auth_file.exists():
+        # Fallback to legacy path only for 'me' to ease transition? 
+        # Actually the user asked to change it to CONFIG_DIR.
+        # But if it's not there, maybe they didn't move it yet.
+        legacy_path = Path.home() / ".codex" / f"auth.{user}.json"
+        if legacy_path.exists():
+            auth_file = legacy_path
+            print(f"Note: Using legacy auth file at {auth_file}")
+
+    if not auth_file.exists():
+        print(f"Error: {auth_file} does not exist. Cannot switch to native mode.", file=sys.stderr)
+        print(f"Please place your auth.json as {CONFIG_DIR}/auth.{user}.json", file=sys.stderr)
         sys.exit(1)
-        
+
     if CODEX_CONFIG.exists():
         try:
             content = CODEX_CONFIG.read_text()
             content = re.sub(r'^(?!\s*#)(\s*model_provider\s*=)', r'# \1', content, flags=re.MULTILINE)
             CODEX_CONFIG.write_text(content)
-            print("Updated Codex Config (native mode)")
+            print(f"Updated Codex Config (native mode, user: {user})")
         except Exception as e:
             print(f"Error Codex Config: {e}")
 
     try:
         import shutil
-        shutil.copy2(auth_me, CODEX_AUTH)
-        print("Updated Codex Auth (restored from auth.me.json)")
+        shutil.copy2(auth_file, CODEX_AUTH)
+        print(f"Updated Codex Auth (restored from {auth_file.name})")
     except Exception as e:
         print(f"Error restoring Codex Auth: {e}")
-
 def update_codex(provider_data, group_name):
     url = get_config_value(provider_data, "codex", group_name, ["url", "base_url"])
     key = get_config_value(provider_data, "codex", group_name, ["key", "api_key"])
@@ -223,13 +233,13 @@ def cmd_use_dispatch(args, target_service=None):
     ensure_config_dir()
     parts = args.target.split(":")
     provider_name = parts[0]
-    group_name = parts[1] if len(parts) > 1 else None
+    group_name = parts[1] if len(parts) > 1 else getattr(args, 'user', None)
 
     if provider_name == "native":
         if target_service in [None, "claude"]:
             print("Native mode for Claude is not yet implemented.")
         if target_service in [None, "codex"]:
-            update_codex_native()
+            update_codex_native(group_name)
         return
 
     p = CONFIG_DIR / f"{provider_name}.toml"
@@ -255,14 +265,17 @@ def main():
     subparsers.add_parser("list", help="List providers")
     p_use = subparsers.add_parser("use", help="Switch all")
     p_use.add_argument("target", help="provider[:group]")
+    p_use.add_argument("user", nargs="?", help="optional user for native mode")
     p_claude = subparsers.add_parser("claude", help="Claude only")
     c_subs = p_claude.add_subparsers(dest="subcommand")
     c_use = c_subs.add_parser("use", help="Switch Claude")
     c_use.add_argument("target", help="provider[:group]")
+    c_use.add_argument("user", nargs="?", help="optional user for native mode")
     p_codex = subparsers.add_parser("codex", help="Codex only")
     x_subs = p_codex.add_subparsers(dest="subcommand")
     x_use = x_subs.add_parser("use", help="Switch Codex")
     x_use.add_argument("target", help="provider[:group]")
+    x_use.add_argument("user", nargs="?", help="optional user for native mode")
     args = parser.parse_args()
     if args.command == "list": cmd_list(args)
     elif args.command == "use": cmd_use_dispatch(args)
