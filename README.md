@@ -60,13 +60,16 @@ model = "claude-3-5-sonnet"
 default_opus_model = "deepseek-v4-pro[1m]"
 default_sonnet_model = "deepseek-v4-pro[1m]"
 default_haiku_model = "deepseek-v4-flash"
+default_fable_model = "deepseek-v4-pro"
 subagent_model = "deepseek-v4-flash"
+max_context_tokens = "1048576"
 effort_level = "max"
 ```
 
 APS writes these fields to Claude Code's `settings.json` `env` object as
 `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`,
-`ANTHROPIC_DEFAULT_HAIKU_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL`. The regular
+`ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_FABLE_MODEL`,
+`CLAUDE_CODE_SUBAGENT_MODEL`, and `CLAUDE_CODE_MAX_CONTEXT_TOKENS`. The regular
 `model` field is written to `settings.json` as Claude Code's top-level `model`;
 `effort_level` is written as the top-level `effortLevel` setting.
 

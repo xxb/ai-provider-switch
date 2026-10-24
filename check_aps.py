@@ -19,8 +19,10 @@ def parse_toml(path):
             current_section = section_match.group(1)
             if current_section not in data: data[current_section] = {}
         else:
-            kv_match = re.match(r'([\w-]+)\s*=\s*"(.*?)"', line)
-            if kv_match: data[current_section][kv_match.group(1)] = kv_match.group(2)
+            kv_match = re.match(r'([\w-]+)\s*=\s*(?:"(.*?)"|(\d+)|([^\s#]+))', line)
+            if kv_match:
+                val = kv_match.group(2) if kv_match.group(2) is not None else (kv_match.group(3) or kv_match.group(4))
+                data[current_section][kv_match.group(1)] = val
     return data
 
 def get_val(data, service, keys, group=None):
@@ -38,9 +40,9 @@ def get_val(data, service, keys, group=None):
 def test_claude(url, key, model):
     if not url or not key: return "N/A"
     test_url = url.rstrip("/")
-    # Smart path: Only add /messages if no standard path is present
+    # Smart path: Only add /v1/messages if no standard path is present
     if not any(test_url.endswith(s) for s in ["/messages", "/v1/messages"]):
-        test_url = f"{test_url}/messages"
+        test_url = f"{test_url}/v1/messages"
     
     payload = {"max_tokens": 1, "messages": [{"role": "user", "content": "Hi"}]}
     if model: payload["model"] = model
@@ -50,6 +52,7 @@ def test_claude(url, key, model):
         "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
         "-X", "POST", test_url,
         "-H", f"x-api-key: {key}",
+        "-H", f"Authorization: Bearer {key}",
         "-H", "anthropic-version: 2023-06-01",
         "-H", "content-type: application/json",
         "-d", json.dumps(payload)
